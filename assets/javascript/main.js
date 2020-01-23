@@ -1,195 +1,146 @@
+var firebaseConfig = {
+  apiKey: "AIzaSyAp6X7TU8ZzUsSwrqyItVu_OwXMdOfq_YY",
+  authDomain: "trainscheduler-c7e29.firebaseapp.com",
+  databaseURL: "https://trainscheduler-c7e29.firebaseio.com",
+  projectId: "trainscheduler-c7e29",
+  storageBucket: "trainscheduler-c7e29.appspot.com",
+  messagingSenderId: "84363031949",
+  appId: "1:84363031949:web:febbc1ec32b9b76e5079c4"
+};
+console.log(firebaseConfig)
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
 
 
-  // Create a variable to reference to firebase database
-  var database = firebase.database();
+var trainData = firebase.database();
 
-  // Initial Values
-  var trainName = "";
-  var destination = "";
-  var frequencyMnt = 0;
-  var firstTrainTime = 0;
-  var trainTime =0;
-  var currentTimeMnt = 0;
-  var nextArrivalMnt = 0;
-  var nextArrival = 0;
-  var minutesAway = 0;
-  var currentTime = 0;
+// 2. Populate Firebase Database with initial data (in this case, I did this via Firebase GUI)
+// 3. Button for adding trains
+$("#add-train-btn").on("click", function(event) {
+  // Prevent the default form submit behavior
+  event.preventDefault();
 
-      // general function to convert hh:mm to minutes 
-        function convertTimeToMinutesFn(time) {
+  // Grabs user input
+  var trainName = $("#train-name-input")
+    .val()
+    .trim();
+  var destination = $("#destination-input")
+    .val()
+    .trim();
+  var firstTrain = $("#first-train-input")
+    .val()
+    .trim();
+  var frequency = $("#frequency-input")
+    .val()
+    .trim();
 
-          time = moment(time, "hh:mm");
-          timeHours = time.hours();
-          timeMin = time.minutes();
-          // Calculation to add up the minutes.
-          return (timeHours*60 + timeMin)
-        }
+  // Creates local "temporary" object for holding train data
+  var newTrain = {
+    name: trainName,
+    destination: destination,
+    firstTrain: firstTrain,
+    frequency: frequency
+  };
 
-        //Show and update current time. Use setInterval method to update time.
-        function displayRealTime() {
-          setInterval(function(){
-            $('#currentTime').html(moment().format('hh:mm A')+' )')
-          }, 1000);
-        }
-        // call function to display in html
-        displayRealTime();
-        
+  // Uploads train data to the database
+  trainData.ref().push(newTrain);
 
-        function minutesLeftFn(firstTrainTime, frequencyMnt,currentTimeMnt) {
-            var temp= convertTimeToMinutesFn(firstTrainTime);
-            var timeDifference=currentTimeMnt - temp;
-          // alert(timeDifference + " "+temp+ " "+currentTimeMnt);
-            if (timeDifference < 0){
-              nextArrival=temp;
-              nextArrival= convertnextArrivalMntToHoursMntFn(nextArrival);
-              minutesAway = temp - currentTimeMnt;
-            }
-            else{
-            var minutesLeft= timeDifference % frequencyMnt;
-            minutesAway = frequencyMnt - minutesLeft;
-            nextArrivalMnt = currentTimeMnt + minutesAway
-            nextArrival= convertnextArrivalMntToHoursMntFn(nextArrivalMnt);
-            
-            }
-          };
+  // Logs everything to console
+  console.log(newTrain.name);
+  console.log(newTrain.destination);
+  console.log(newTrain.firstTrain);
+  console.log(newTrain.frequency);
 
+  // Alert
+  alert("Train successfully added");
 
-        // Convert next train to hours and minutes for train schedule display.
-        function convertnextArrivalMntToHoursMntFn(nextArrivalMnt) {
-              nextArrivalHours = Math.floor(nextArrivalMnt / 60); 
-              // Also figure out if time is AM or PM.
-              if (nextArrivalHours > 12) {
-                nextArrivalHours = nextArrivalHours - 12;
-                ampm = "PM";
-              } else {
-                nextArrivalHours = nextArrivalHours;
-                ampm = "AM";
-              }
-              nextArrivalMin = nextArrivalMnt % 60;
-              if (nextArrivalHours < 10) {
-                nextArrivalHours = "0" + nextArrivalHours;
-              }
-              if (nextArrivalMin < 10) {
-                nextArrivalMin = "0" + nextArrivalMin;
-              }
-              nextArrival = nextArrivalHours + ":" + nextArrivalMin + " " + ampm;
-              return nextArrival;
-            }
+  // Clears all of the text-boxes
+  $("#train-name-input").val("");
+  $("#destination-input").val("");
+  $("#first-train-input").val("");
+  $("#frequency-input").val("");
+});
 
-  //Capture Button Click
-  $("#submit").on("click", function(event) {
+// 4. Create Firebase event for adding trains to the database and a row in the html when a user adds an entry
+trainData.ref().on("child_added", function(childSnapshot, prevChildKey) {
+  console.log(childSnapshot.val());
 
-          event.preventDefault();
+  // Store everything into a variable.
+  var tName = childSnapshot.val().name;
+  var tDestination = childSnapshot.val().destination;
+  var tFrequency = childSnapshot.val().frequency;
+  var tFirstTrain = childSnapshot.val().firstTrain;
 
-          trainName= $("#trainName").val().trim();
-          destination = $("#destination").val().trim();
-          firstTrainTime = $("#firstTrainTime").val().trim();
-          frequencyMnt= $("#frequency").val().trim();
+  var timeArr = tFirstTrain.split(":");
+  var trainTime = moment()
+    .hours(timeArr[0])
+    .minutes(timeArr[1]);
+  var maxMoment = moment.max(moment(), trainTime);
+  var tMinutes;
+  var tArrival;
 
+  // If the first train is later than the current time, sent arrival to the first train time
+  if (maxMoment === trainTime) {
+    tArrival = trainTime.format("hh:mm A");
+    tMinutes = trainTime.diff(moment(), "minutes");
+  } else {
+    // Calculate the minutes until arrival using hardcore math
+    // To calculate the minutes till arrival, take the current time in unix subtract the FirstTrain time
+    // and find the modulus between the difference and the frequency.
+    var differenceTimes = moment().diff(trainTime, "minutes");
+    var tRemainder = differenceTimes % tFrequency;
+    tMinutes = tFrequency - tRemainder;
+    // To calculate the arrival time, add the tMinutes to the current time
+    tArrival = moment()
+      .add(tMinutes, "m")
+      .format("hh:mm A");
+  }
+  console.log("tMinutes:", tMinutes);
+  console.log("tArrival:", tArrival);
 
-          //Check that all fields are filled out.
-          if (trainName === "" || destination === "" || firstTrainTime === "" || frequencyMnt === ""){
-            $("#missingField").html("ALL fields are required to add a train to the schedule.");
-            return false;		
-          }
+  // Add each train's data into the table
+  $("#train-table > tbody").append(
+    $("<tr>").append(
+      $("<td>").text(tName),
+      $("<td>").text(tDestination),
+      $("<td>").text(tFrequency),
+      $("<td>").text(tArrival),
+      $("<td>").text(tMinutes)
+    )
+  );
+});
 
-          //If form is valid, perform time calculations and add train to the current schedule.
-          else {
+// Assume the following situations.
 
-        $("#missingField").empty();
+// (TEST 1)
+// First Train of the Day is 3:00 AM
+// Assume Train comes every 3 minutes.
+// Assume the current time is 3:16 AM....
+// What time would the next train be...? ( Let's use our brains first)
+// It would be 3:18 -- 2 minutes away
 
-          currentTime=moment().format("hh:mm A");
-          currentTimeMnt= convertTimeToMinutesFn(moment());
-          minutesLeftFn(firstTrainTime, frequencyMnt, currentTimeMnt);
+// (TEST 2)
+// First Train of the Day is 3:00 AM
+// Assume Train comes every 7 minutes.
+// Assume the current time is 3:16 AM....
+// What time would the next train be...? (Let's use our brains first)
+// It would be 3:21 -- 5 minutes away
 
-          var itemsToPush={
-          
-          Name:trainName,
-          Destination:destination,
-          FirstTrainTime:firstTrainTime,// no need to display this item
-          Frequency:frequencyMnt,
-          NextArrival:nextArrival,
-          MinutesAway:minutesAway,
-          CurrentTime:currentTime,
-          DateAdded:firebase.database.ServerValue.TIMESTAMP
-        
-        }
+// ==========================================================
 
-      // push user  input to firebase.
-      database.ref().push(itemsToPush);
-        //clear form text boxes after push
-        $("#trainName").val(" ");
-        $("#destination").val(" ");
-        $("#firstTrainTime").val(" ");
-        $("#frequency").val(" ");
-        return false;
-    }
-  });
+// Solved Mathematically
+// Test case 1:
+// 16 - 00 = 16
+// 16 % 3 = 1 (Modulus is the remainder)
+// 3 - 1 = 2 minutes away
+// 2 + 3:16 = 3:18
 
-      database.ref().on("child_added", function(childSnapshot) {
-
-
-        var tempname=childSnapshot.val().Name;
-        var tempdest=childSnapshot.val().Destination;
-        var tempfreq=childSnapshot.val().Frequency;
-        var temparrival=childSnapshot.val().NextArrival;
-        var tempmntaway=childSnapshot.val().MinutesAway;
-        var firsttraintime=childSnapshot.val().FirstTrainTime;
-        var currenttime=childSnapshot.val().CurrentTime;
-        var tempkey=childSnapshot.key;
-
-
-        $('#trainSchedule').append("<tr>" +
-        "<td>" + tempname+ "</td>" +
-        "<td>" + tempdest+ "</td>" +
-        "<td>" + tempfreq+ "</td>" +
-        "<td>" + temparrival + "</td>" +
-        "<td>" + tempmntaway + "</td>" +
-        "<td><img src='assets/images/if_basket_1814090.png' alt='deleteIcon' class='delete' data-value='"+tempkey+"'style='width:40px;height:40px'></td>"+
-
-
-        "</tr>"
-        );
-        },function(errorObject) {
-        console.log("Errors handled: " + errorObject.code);
-        });
-
-
-        // bonus delete button to remove rows from table. 
-      $('body').on("click", ".delete", function(){
-            // Prevent form from submitting
-            event.preventDefault();
-
-            //confirm with the user before he or she decides to actually delete the train data.
-            var confirmDelete = confirm("Are you sure you want to delete this train? Deleting a train removes it permanently from the database.");
-            //If user confirms... remove from table and firebase.
-            if (confirmDelete) {
-              //this removes just table from display.
-              $(this).closest('tr').remove();
-              //this removes train info from db.
-              var x = $(this).attr("data-value");
-              database.ref().child(x).remove();
-            }
-
-            else {
-              return false;
-            }
-      });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// Solved Mathematically
+// Test case 2:
+// 16 - 00 = 16
+// 16 % 7 = 2 (Modulus is the remainder)
+// 7 - 2 = 5 minutes away
+// 5 + 3:16 = 3:21
 
 
 
